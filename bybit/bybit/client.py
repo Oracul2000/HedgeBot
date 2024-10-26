@@ -1,3 +1,5 @@
+from pybit.unified_trading import WebSocket
+from pybit.unified_trading import HTTP
 import websockets
 
 import time
@@ -8,49 +10,70 @@ import asyncio
 import logging
 
 from .constants import *
-from .config import *
-from errors import *
+from .errors import *
+from .settings import ByBitSettings
 
 
-class wsclient:
-    # Constants
-    testnet_urls = {
-        PerpetualStream: "wss://stream-testnet.bybit.com/v5/public/linear",
-        PrivateStream: "wss://stream-testnet.bybit.com/v5/private",
-        OrderEntryStream: "wss://stream-testnet.bybit.com/v5/trade"
-    }
+class wsclient_pybit:
+    def __init__(self, bbs: ByBitSettings):
+        self.prestart_funcs = []
+        self.prestart_args = []
 
-    def __init__(self, api: str, secret: str) -> None:
-        self.api = api
-        self.secret = secret
-        asyncio.get_event_loop().run_until_complete(self.auth())
+        self.wsprivate = WebSocket(
+            testnet=bbs.testnet,
+            channel_type="private",
+            api_key=bbs.api,
+            api_secret=bbs.secret,
+            trace_logging=True,
+            restart_on_error=True,
+        )
 
-    def gen_signature(self, payload, timeStamp, apiKey, secretKey, recvWindow):
-        param_str = str(timeStamp) + apiKey + recvWindow + payload
-        hash = hmac.new(bytes(secretKey, "utf-8"),
-                        param_str.encode("utf-8"), hashlib.sha256)
-        signature = hash.hexdigest()
-        return signature
+        self.session = HTTP(
+            testnet=bbs.testnet,
+            api_key=bbs.api,
+            api_secret=bbs.secret,
+        )
 
-    async def auth(self):
-        logging.info('Start of auth')
-        expires = int((time.time() + 1) * 10000)
-        signature = str(hmac.new(bytes(self.secret, "utf-8"),
-                                 bytes(f"GET/realtime{expires}", "utf-8"),
-                                 digestmod="sha256").hexdigest())
+        self.ws = WebSocket(
+            testnet=bbs.testnet,
+            channel_type="linear",
+        )
 
-        async with websockets.connect(self.testnet_urls[PrivateStream]) as websocket:
-            await websocket.send(json.dumps({
-                "op": "auth",
-                "args": [self.api, expires, signature]
-            })
-            )
-            response = json.loads(await websocket.recv())
-            logging.info(response)
-            if not response["success"]:
-                raise AuthError()
-            print(f"Received: {response}")
+        self.session = HTTP(
+            testnet=bbs.testnet,
+            api_key=bbs.api,
+            api_secret=bbs.secret,
+        )
 
+        self.bbs = bbs
 
-logging.basicConfig(level=logging.INFO, filename=TEST_LOG_FILE, filemode="w")
-wscl = wsclient('3x4DuwUNYk17nI4cB01', 'T6MovHAoVNbfRMzFhWfHt97YIwlQlolX7vaR')
+    def switch_position_mode(self):
+        self.session.switch_position_mode(
+            category="linear",
+            symbol=self.bbs.symbol,
+            mode=3
+        )
+
+    def set_prestart(self, func, *args):
+        self.prestart_funcs.append(func)
+        self.prestart_args.append(args)
+
+    async def async_prestart(self):
+        for f, x in zip(self.prestart_funcs, self.prestart_args):
+            f(*x)
+            await asyncio.sleep(0)
+
+    async def bind(self, handle_position_stream, 
+             handle_execution_stream,
+             handle_order_stream):
+        self.wsprivate.position_stream(handle_position_stream)
+        self.wsprivate.execution_stream(handle_execution_stream)
+        self.wsprivate.order_stream(handle_order_stream)
+
+        not_started = True
+        while True:
+            if not_started:
+                await self.async_prestart()
+                not_started = False
+            time.sleep(0.001)
+            

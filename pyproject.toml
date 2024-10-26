@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "хеджбот2"
+name = "торговыйбот2"
 version = "0.1.0"
 description = ""
 authors = ["Коля <kopytovnn@gmailcom>"]
@@ -7,8 +7,10 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-bybit = {path = "bybit"}
-strategies = {path = "strategies"}
+bybit = {path = "./bybit/"}
+strategies = {path = "./strategies/"}
+ui = {path = "./ui/"}
+database = {path = "./database/"}
 
 [build-system]
 requires = ["poetry-core"]
