@@ -1,0 +1,2 @@
+INFO:root:Start of auth
+INFO:root:{'success': False, 'ret_msg': 'Permission denied for current apikey', 'op': 'auth', 'conn_id': 'cqg78t5daugsr25tmgn0-280kn'}
